@@ -9,6 +9,7 @@ on:
         default: "0.1.0"
   push:
     branches:
+      - main
       - master
     tags:
       - "ios-v*.*.*"
