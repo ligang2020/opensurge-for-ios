@@ -38,7 +38,7 @@ xcodebuild \
   CODE_SIGN_STYLE=Manual \
   PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER" \
   CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" \
-  clean archive
+  clean archive >&2
 
 cat >"$EXPORT_OPTIONS" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -70,7 +70,7 @@ xcodebuild \
   -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist "$EXPORT_OPTIONS"
+  -exportOptionsPlist "$EXPORT_OPTIONS" >&2
 
 IPA="$(find "$EXPORT_PATH" -maxdepth 1 -name '*.ipa' -print -quit)"
 [[ -n "$IPA" && -f "$IPA" ]] || { echo "Signed IPA was not produced in $EXPORT_PATH" >&2; exit 1; }
