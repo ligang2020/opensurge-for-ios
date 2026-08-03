@@ -39,7 +39,7 @@ jobs:
           OPENSURGE_VERSION: ${{ inputs.version || '0.1.0' }}
           OPENSURGE_BUILD_NUMBER: ${{ github.run_number }}
         run: |
-          ipa_path="$(apps/ios/Scripts/build-unsigned-ipa.sh)"
+          ipa_path="$(bash apps/ios/Scripts/build-unsigned-ipa.sh)"
           echo "ipa=$ipa_path" >>"$GITHUB_OUTPUT"
 
       - name: Upload unsigned IPA
@@ -113,7 +113,7 @@ jobs:
           IOS_EXPORT_METHOD: ${{ secrets.IOS_EXPORT_METHOD || 'ad-hoc' }}
           IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ env.IOS_PROVISIONING_PROFILE_SPECIFIER }}
         run: |
-          ipa_path="$(apps/ios/Scripts/build-signed-ipa.sh)"
+          ipa_path="$(bash apps/ios/Scripts/build-signed-ipa.sh)"
           echo "ipa=$ipa_path" >>"$GITHUB_OUTPUT"
 
       - name: Upload signed IPA
