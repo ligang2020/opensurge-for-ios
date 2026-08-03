@@ -31,7 +31,7 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY="" \
-  clean build
+  clean build >&2
 
 APP="$DERIVED_DATA/Build/Products/$CONFIGURATION-iphoneos/$SCHEME.app"
 [[ -d "$APP" ]] || { echo "iOS app bundle was not produced at $APP" >&2; exit 1; }
