@@ -1,0 +1,124 @@
+name: iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "IPA marketing version"
+        required: false
+        default: "0.1.0"
+  push:
+    branches:
+      - master
+    tags:
+      - "ios-v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned:
+    name: Build unsigned IPA
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build unsigned IPA
+        id: ipa
+        shell: bash
+        env:
+          OPENSURGE_VERSION: ${{ inputs.version || '0.1.0' }}
+          OPENSURGE_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          ipa_path="$(apps/ios/Scripts/build-unsigned-ipa.sh)"
+          echo "ipa=$ipa_path" >>"$GITHUB_OUTPUT"
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenSurge-Mobile-${{ inputs.version || '0.1.0' }}-unsigned-ipa
+          path: ${{ steps.ipa.outputs.ipa }}
+          if-no-files-found: error
+
+  signed:
+    name: Build signed IPA
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check signing secrets
+        id: signing
+        shell: bash
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
+        run: |
+          if [[ -n "$IOS_CERTIFICATE_BASE64" && -n "$IOS_CERTIFICATE_PASSWORD" && -n "$IOS_PROVISIONING_PROFILE_BASE64" && -n "$IOS_DEVELOPMENT_TEAM" ]]; then
+            echo "available=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "available=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Install signing certificate and provisioning profile
+        if: steps.signing.outputs.available == 'true'
+        shell: bash
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          certificate_path="$RUNNER_TEMP/ios-signing.p12"
+          profile_path="$RUNNER_TEMP/ios-profile.mobileprovision"
+          keychain_path="$RUNNER_TEMP/ios-signing.keychain-db"
+
+          printf '%s' "$IOS_CERTIFICATE_BASE64" | base64 --decode >"$certificate_path"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode >"$profile_path"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          profile_plist="$RUNNER_TEMP/ios-profile.plist"
+          security cms -D -i "$profile_path" >"$profile_plist"
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$profile_plist")"
+          profile_name="$(/usr/libexec/PlistBuddy -c 'Print Name' "$profile_plist")"
+          cp "$profile_path" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+          echo "IOS_PROVISIONING_PROFILE_SPECIFIER=$profile_name" >>"$GITHUB_ENV"
+
+      - name: Build signed IPA
+        if: steps.signing.outputs.available == 'true'
+        id: ipa
+        shell: bash
+        env:
+          OPENSURGE_VERSION: ${{ inputs.version || '0.1.0' }}
+          OPENSURGE_BUILD_NUMBER: ${{ github.run_number }}
+          IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
+          IOS_BUNDLE_IDENTIFIER: ${{ secrets.IOS_BUNDLE_IDENTIFIER || 'com.opensurge.mobile' }}
+          IOS_EXPORT_METHOD: ${{ secrets.IOS_EXPORT_METHOD || 'ad-hoc' }}
+          IOS_PROVISIONING_PROFILE_SPECIFIER: ${{ env.IOS_PROVISIONING_PROFILE_SPECIFIER }}
+        run: |
+          ipa_path="$(apps/ios/Scripts/build-signed-ipa.sh)"
+          echo "ipa=$ipa_path" >>"$GITHUB_OUTPUT"
+
+      - name: Upload signed IPA
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenSurge-Mobile-${{ inputs.version || '0.1.0' }}-signed-ipa
+          path: ${{ steps.ipa.outputs.ipa }}
+          if-no-files-found: error
